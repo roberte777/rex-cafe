@@ -5,11 +5,13 @@ pub mod room;
 
 use art::art;
 use room::{
-    BOARD, apply_light, background, light_map, paint_counter, paint_door, paint_door_window,
-    paint_lamp_glow, paint_machine, paint_machine_lights, paint_window, repaint_table,
+    apply_flash, apply_light, background, light_map, paint_counter, paint_door, paint_door_window,
+    paint_hanging_lamps, paint_lamp_glow, paint_machine, paint_machine_lights, paint_window,
+    repaint_table,
 };
 
 use crate::agents::app_display_name;
+use crate::audio::{Channel, LEVEL_STEP, Levels};
 use crate::cafe::geometry::{BARISTA_Y, Place, ROOM_H, ROOM_W, TABLES, seat_table};
 use crate::cafe::{Activity, Cafe, Clawd, HATS};
 use crate::engine::{Canvas, Rgb, Screen, Sprite};
@@ -29,6 +31,7 @@ const SPILLED: Rgb = Rgb::hex(0xe0675a);
 const BUBBLE_BG: Rgb = Rgb::hex(0xefe6d6);
 const BUBBLE_FG: Rgb = Rgb::hex(0x2a1d18);
 const BUBBLE_DIM: Rgb = Rgb::hex(0x6f5f55);
+const STEAM: Rgb = Rgb::hex(0xe8e2da);
 
 const LEGEND_COLS: usize = 4;
 const ROOM_ROWS: usize = ROOM_H / 2;
@@ -38,6 +41,11 @@ const ROOM_ROWS: usize = ROOM_H / 2;
 pub enum Target {
     Agent(String),
     Door,
+    /// Anywhere on the volume menu, so clicks there don't reach the room behind.
+    VolumePanel,
+    VolumeRow(Channel),
+    /// A spot on a slider, in tenths.
+    Volume(Channel, u8),
 }
 
 /// Transient things the view shows that the Café doesn't own.
@@ -47,11 +55,19 @@ pub struct Ui {
     pub hover: Option<String>,
     pub notice: Option<String>,
     pub demo: bool,
+    /// Whether sound is on; `None` when there's no sound to toggle.
+    pub sound: Option<bool>,
+    pub levels: Levels,
+    /// The volume menu, when open, with the channel being adjusted.
+    pub volume_menu: Option<Channel>,
 }
+
+/// A clickable rectangle in cells, `[x0, x1) x [y0, y1)`, and what's there.
+type Hit = (i32, i32, i32, i32, Target);
 
 pub struct Frame {
     pub screen: Screen,
-    hits: Vec<(i32, i32, i32, i32, Target)>,
+    hits: Vec<Hit>,
 }
 
 impl Frame {
@@ -66,31 +82,57 @@ impl Frame {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Layout {
-    scale: usize,
+    scale: f32,
     ox: i32,
     oy: i32,
+    /// The room's size in cells.
+    room_w: i32,
+    room_h: i32,
     legend_rows: usize,
 }
 
+/// A whole-number scale wins when it keeps at least this much of the best fit,
+/// trading a little size for crisp pixels.
+const SNAP: f32 = 0.9;
+/// Legend rows the room leaves space for, so its size doesn't jump as Agents come and go.
+const RESERVED_LEGEND_ROWS: usize = 2;
+
+/// Fits the room to the terminal: as large as it can be while keeping its
+/// shape, never smaller than one cell per pixel.
 fn layout(cols: u16, rows: u16, agents: usize) -> Option<Layout> {
-    let wanted = agents.div_ceil(LEGEND_COLS).max(1);
-    for scale in [2, 1] {
-        let (room_w, room_h) = (ROOM_W * scale, ROOM_ROWS * scale);
-        if (cols as usize) < room_w || (rows as usize) < room_h + 4 {
-            continue;
-        }
-        let legend_rows = wanted.min((rows as usize - room_h - 2) / 2);
-        let total = room_h + 1 + legend_rows * 2 + 1;
-        return Some(Layout {
-            scale,
-            ox: ((cols as usize - room_w) / 2) as i32,
-            oy: ((rows as usize - total) / 2) as i32,
-            legend_rows,
-        });
+    let (cols, rows) = (cols as i32, rows as i32);
+    // The gap above the Legend and the footer below it, plus Legend rows.
+    let chrome = |legend: usize| 2 + 2 * legend as i32;
+    let fit = |legend: usize| {
+        (cols as f32 / ROOM_W as f32).min((rows - chrome(legend)) as f32 / ROOM_ROWS as f32)
+    };
+    let reserved = if fit(RESERVED_LEGEND_ROWS) >= 1.0 {
+        RESERVED_LEGEND_ROWS
+    } else {
+        1
+    };
+    let mut scale = fit(reserved);
+    if scale < 1.0 {
+        return None;
     }
-    None
+    if scale.floor() / scale >= SNAP {
+        scale = scale.floor();
+    }
+    // Matches the size `Screen::blit` draws.
+    let room_w = (ROOM_W as f32 * scale + 1e-3).floor() as i32;
+    let room_h = (ROOM_H as f32 * scale / 2.0 + 1e-3).floor() as i32;
+    let oy = ((rows - room_h - chrome(reserved)) / 2).max(0);
+    let room_for_legend = ((rows - oy - room_h - 2) / 2).max(1) as usize;
+    Some(Layout {
+        scale,
+        ox: (cols - room_w) / 2,
+        oy,
+        room_w,
+        room_h,
+        legend_rows: agents.div_ceil(LEGEND_COLS).max(1).min(room_for_legend),
+    })
 }
 
 /// The smallest terminal that fits the room.
@@ -102,18 +144,27 @@ pub fn compose(cafe: &Cafe, ui: &Ui, cols: u16, rows: u16, wall_now: f64) -> Fra
     let legend = cafe.legend();
     let Some(l) = layout(cols, rows, legend.len()) else {
         compose_list(cafe, ui, &mut screen, &mut hits, wall_now);
+        volume_menu(&mut screen, &mut hits, ui, cols as i32 - VOLUME_W - 1, 1);
         return Frame { screen, hits };
     };
-    let s = l.scale as i32;
-    let cell = |x: i32, y: i32| (l.ox + x * s, l.oy + y * s / 2);
+    // Where a canvas pixel lands on screen.
+    let cell = |x: i32, y: i32| {
+        (
+            l.ox + (x as f32 * l.scale).floor() as i32,
+            l.oy + (y as f32 * l.scale / 2.0).floor() as i32,
+        )
+    };
 
     let canvas = paint(cafe, ui.selected.as_deref());
     screen.blit(&canvas, l.ox, l.oy, l.scale);
 
     // The Menu, chalked on the board.
     let counts = cafe.menu_counts();
-    let (mx, my) = cell(6, 8);
-    screen.text(mx + 3, my, "TODAY'S MENU", CHALK, Some(BOARD));
+    // Even spacing in whole rows, so fractional scales don't bunch the lines.
+    let gap = l.scale.round().max(1.0) as i32;
+    let (tx, ty) = cell(9, 8);
+    let (mx, _) = cell(6, 8);
+    screen.text(tx, ty, "TODAY'S MENU", CHALK, None);
     let items = [
         ("Espresso", counts[0]),
         ("Cortado", counts[1]),
@@ -122,24 +173,20 @@ pub fn compose(cafe: &Cafe, ui: &Ui, cols: u16, rows: u16, wall_now: f64) -> Fra
     ];
     for (i, (drink, n)) in items.iter().enumerate() {
         let dots = ".".repeat(17 - drink.len() - 1);
-        screen.text(
-            mx,
-            my + 2 + i as i32,
-            &format!("{drink} {dots} {n}"),
-            CHALK_DIM,
-            Some(BOARD),
-        );
+        let y = ty + gap * (2 + i as i32);
+        screen.text(mx, y, &format!("{drink} {dots} {n}"), CHALK_DIM, None);
     }
-    screen.text(mx, my + 7, "wifi: rex-cafe", CHALK_DIM, Some(BOARD));
+    screen.text(mx, ty + gap * 7, "wifi: rex-cafe", CHALK_DIM, None);
 
     if !cafe.open {
-        let (sx, sy) = cell(121, 18);
+        let (sign_left, sy) = cell(118, 18);
+        let (sign_right, _) = cell(132, 18);
         screen.text(
-            sx,
+            (sign_left + sign_right) / 2 - 3,
             sy,
             "CLOSED",
             Rgb::hex(0xb3352c),
-            Some(Rgb::hex(0xe9dcc0)),
+            None,
         );
     }
 
@@ -158,8 +205,8 @@ pub fn compose(cafe: &Cafe, ui: &Ui, cols: u16, rows: u16, wall_now: f64) -> Fra
     }
 
     // Legend.
-    let room_w = (ROOM_W * l.scale) as i32;
-    let top = l.oy + (ROOM_ROWS * l.scale) as i32 + 1;
+    let room_w = l.room_w;
+    let top = l.oy + l.room_h + 1;
     screen.fill(
         l.ox,
         top - 1,
@@ -226,7 +273,118 @@ pub fn compose(cafe: &Cafe, ui: &Ui, cols: u16, rows: u16, wall_now: f64) -> Fra
         };
         bubble(&mut screen, &lines, anchor_x, anchor_y, l.ox, l.ox + room_w);
     }
+    volume_menu(
+        &mut screen,
+        &mut hits,
+        ui,
+        l.ox + room_w - VOLUME_W - 2,
+        l.oy + 1,
+    );
     Frame { screen, hits }
+}
+
+const VOLUME_W: i32 = 33;
+const MENU_BG: Rgb = Rgb::hex(0x1d1611);
+const MENU_EDGE: Rgb = Rgb::hex(0x6e4a32);
+const SLIDER_ON: Rgb = Rgb::hex(0xf0c27a);
+const SLIDER_STEPS: i32 = 10;
+
+/// The volume menu with its top-left at `(x, y)`, when it's open.
+fn volume_menu(screen: &mut Screen, hits: &mut Vec<Hit>, ui: &Ui, x: i32, y: i32) {
+    let Some(current) = ui.volume_menu else {
+        return;
+    };
+    let x = x.max(0);
+    let muted = ui.sound == Some(false);
+    let inner = (VOLUME_W - 2) as usize;
+    let rows = Channel::ALL.len() as i32;
+    hits.push((x, y, x + VOLUME_W, y + rows + 4, Target::VolumePanel));
+
+    let title = if muted {
+        " volume · muted "
+    } else {
+        " volume "
+    };
+    let top = format!(
+        "╭─{title}{}╮",
+        "─".repeat(inner - 1 - title.chars().count())
+    );
+    screen.text(x, y, &top, MENU_EDGE, Some(MENU_BG));
+    screen.text(
+        x + 2,
+        y,
+        title,
+        if muted { NEEDS_YOU } else { CHALK },
+        Some(MENU_BG),
+    );
+
+    for (i, ch) in Channel::ALL.into_iter().enumerate() {
+        let row = y + 1 + i as i32;
+        let selected = ch == current;
+        let bg = if selected { SELECTED_BG } else { MENU_BG };
+        screen.text(x, row, "│", MENU_EDGE, Some(MENU_BG));
+        screen.text(x + 1, row, &" ".repeat(inner), NAME, Some(bg));
+        screen.text(x + VOLUME_W - 1, row, "│", MENU_EDGE, Some(MENU_BG));
+        let marker = if selected { "▸" } else { " " };
+        screen.text(
+            x + 2,
+            row,
+            &format!("{marker} {:<7}", ch.label()),
+            NAME,
+            Some(bg),
+        );
+        let level = ui.levels.get(ch);
+        let filled = (level / LEVEL_STEP).round() as i32;
+        let slider_x = x + 13;
+        for k in 0..SLIDER_STEPS {
+            let (glyph, fg) = if k < filled {
+                ("━", SLIDER_ON)
+            } else {
+                ("─", FAINT)
+            };
+            let fg = if muted { fg.mix(FAINT, 0.6) } else { fg };
+            screen.text(slider_x + k, row, glyph, fg, Some(bg));
+            hits.push((
+                slider_x + k,
+                row,
+                slider_x + k + 1,
+                row + 1,
+                Target::Volume(ch, (k + 1) as u8),
+            ));
+        }
+        screen.text(
+            slider_x + SLIDER_STEPS + 2,
+            row,
+            &format!("{:>4}", format!("{}%", filled * 10)),
+            DIM,
+            Some(bg),
+        );
+        hits.push((x + 1, row, slider_x - 1, row + 1, Target::VolumeRow(ch)));
+        hits.push((slider_x - 1, row, slider_x, row + 1, Target::Volume(ch, 0)));
+    }
+
+    let help = y + 1 + rows;
+    screen.text(
+        x,
+        help,
+        &format!("│{}│", " ".repeat(inner)),
+        MENU_EDGE,
+        Some(MENU_BG),
+    );
+    screen.text(
+        x + 2,
+        help,
+        "←→ adjust · m mute · v close",
+        FAINT,
+        Some(MENU_BG),
+    );
+    screen.text(
+        x,
+        help + 1,
+        &format!("╰{}╯", "─".repeat(inner)),
+        MENU_EDGE,
+        Some(MENU_BG),
+    );
 }
 
 /// The pixel scene: room, characters, lighting, and glowing things.
@@ -234,26 +392,19 @@ pub fn paint(cafe: &Cafe, selected: Option<&str>) -> Canvas {
     let a = art();
     let time = cafe.time;
     let mut c = background().clone();
-    paint_door(&mut c, cafe.door_open(), time);
-    paint_machine(&mut c);
-    if cafe.barista.present() {
-        let bx = cafe.barista.x.round() as i32;
-        let name = if cafe.barista.serving() {
-            "barista_serve"
-        } else {
-            "barista"
-        };
-        c.sprite(a.chars.get(name), bx, BARISTA_Y, &a.chars.palette, &[]);
-        if cafe.barista.holding_cup() {
-            let cx = if cafe.barista.serving() {
-                bx + 15
-            } else {
-                bx + 12
-            };
-            c.sprite(a.chars.get("cup"), cx, BARISTA_Y + 8, &a.chars.palette, &[]);
-        }
-    }
+    let flash = cafe.ambient.storm.flash();
+    paint_door(&mut c, cafe.door_open(), time, flash);
+    let brew = cafe.barista.brew_progress();
+    paint_machine(&mut c, brew, time);
+    let barista_cup = cafe
+        .barista
+        .present()
+        .then(|| draw_barista(&mut c, cafe))
+        .flatten();
     paint_counter(&mut c);
+    if let Some((x, y)) = barista_cup {
+        c.sprite(a.chars.get("cup"), x, y, &a.chars.palette, &[]);
+    }
 
     enum Item<'a> {
         Table(usize),
@@ -274,10 +425,12 @@ pub fn paint(cafe: &Cafe, selected: Option<&str>) -> Canvas {
     }
 
     apply_light(&mut c);
+    apply_flash(&mut c, flash);
 
-    paint_window(&mut c, time);
+    paint_window(&mut c, time, flash, cafe.ambient.storm.bolt());
+    paint_hanging_lamps(&mut c);
     if !cafe.door_open() {
-        paint_door_window(&mut c, time);
+        paint_door_window(&mut c, time, flash);
     }
     if !cafe.open {
         c.fill(118, 18, 14, 2, Rgb::hex(0xe9dcc0));
@@ -306,31 +459,29 @@ pub fn paint(cafe: &Cafe, selected: Option<&str>) -> Canvas {
         1.15,
     );
     paint_lamp_glow(&mut c);
-    paint_machine_lights(&mut c, time);
+    paint_machine_lights(&mut c, time, brew);
 
-    // Steam from the machine while brewing.
-    if cafe.barista.brewing() {
-        for i in 0..3 {
-            let t = (time * 2.0 + i as f64 * 0.33).fract() as f32;
-            let x = room::MACHINE_AT.0 + 3 + i * 4 + ((time * 3.0 + i as f64).sin() * 1.2) as i32;
-            c.blend(
-                x,
-                room::MACHINE_AT.1 - 1 - (t * 6.0) as i32,
-                Rgb::hex(0xe8e2da),
-                0.5 * (1.0 - t),
-            );
+    // Steam: from the wand while milk steams, and from the drink in hand.
+    let steaming = match (cafe.barista.drink(), brew) {
+        (Some(drink), Some(p)) => {
+            // Steaming starts just after the shot does and runs for the drink's steam time.
+            let start = room::SHOT_STARTS + 0.08;
+            p > start && p < start + drink.steam_secs() / 4.2
+        }
+        _ => false,
+    };
+    if steaming {
+        let (wx, wy) = room::STEAM_WAND;
+        for i in 0..4 {
+            let t = (time * 1.8 + i as f64 / 4.0).fract() as f32;
+            let x = wx + ((time * 2.5 + i as f64 * 1.7).sin() * 1.5) as i32;
+            let y = wy - (t * 9.0) as i32;
+            c.blend(x, y, STEAM, 0.6 * (1.0 - t));
+            c.blend(x + 1, y, STEAM, 0.35 * (1.0 - t));
         }
     }
-
-    // Dust in the lamplight.
-    for m in &cafe.ambient.motes {
-        let tw = ((time as f32 * 1.7 + m.phase).sin() * 0.5 + 0.5) * 0.35 + 0.1;
-        c.blend(
-            m.x.round() as i32,
-            m.y.round() as i32,
-            Rgb::hex(0xffe9b8),
-            tw,
-        );
+    if let Some((x, y)) = barista_cup {
+        steam(&mut c, x + 1, y - 1, time, 0);
     }
 
     for cl in cafe.clawds_in_room() {
@@ -377,6 +528,90 @@ fn hat_overrides(c: &Clawd) -> [(char, Rgb); 2] {
     [('H', hat.color), ('h', hat.shade)]
 }
 
+/// Draws the Barista; returns where the drink it's carrying goes, which is
+/// drawn later so the counter doesn't hide it.
+fn draw_barista(cv: &mut Canvas, cafe: &Cafe) -> Option<(i32, i32)> {
+    let a = art();
+    let b = &cafe.barista;
+    let x = b.x.round() as i32;
+    let reaching = b.serving() || b.brewing();
+    let name = if reaching {
+        "barista_serve"
+    } else if (cafe.time * 0.35).fract() < 0.04 {
+        "barista_blink"
+    } else {
+        "barista"
+    };
+    let sprite = a.chars.get(name);
+    let sprite = if b.facing_left() {
+        sprite.flipped()
+    } else {
+        sprite.clone()
+    };
+    cv.sprite(&sprite, x, BARISTA_Y, &a.chars.palette, &[]);
+    b.holding_cup().then(|| {
+        let reach = if b.serving() { 13 } else { 10 };
+        let hand = if b.facing_left() {
+            x + 15 - reach - 3
+        } else {
+            x + reach
+        };
+        (hand, BARISTA_Y + 10)
+    })
+}
+
+/// A thin curl of steam rising from `(x, y)`.
+fn steam(cv: &mut Canvas, x: i32, y: i32, time: f64, seed: u64) {
+    for k in 0..2 {
+        let t = ((time * 0.55) + seed as f64 * 0.37 + k as f64 * 0.5).fract() as f32;
+        let dx = ((t * 7.0 + seed as f32).sin() * 1.2).round() as i32;
+        cv.blend(x + dx, y - (t * 6.0) as i32, STEAM, 0.42 * (1.0 - t));
+    }
+}
+
+/// A seated Clawd on a coffee break lifts its cup for a sip every few seconds.
+fn sipping(c: &Clawd, time: f64) -> bool {
+    ((time + c.order as f64 * 1.7) / 7.0).fract() < 0.16
+}
+
+fn cheering(time: f64) -> bool {
+    (time * 0.5).fract() < 0.3
+}
+
+/// Where a Clawd's drink is, if it has one: top-left of the cup sprite.
+fn cup_pose(c: &Clawd, time: f64) -> Option<(i32, i32)> {
+    let left = c.pos.0.round() as i32 - 6;
+    let top = clawd_top(c);
+    let activity = c.activity();
+    if c.is_seated() {
+        let Some(Place::Seat(i)) = c.place else {
+            return None;
+        };
+        let table = seat_table(i).y;
+        return match activity {
+            Activity::Spilled => None,
+            Activity::CoffeeBreak if sipping(c, time) => Some((left + 5, top + 3)),
+            Activity::Done if cheering(time) => Some((left + 10, top - 3)),
+            Activity::Working => Some((left + 10, table - 3)),
+            _ => Some((left + 5, table - 3)),
+        };
+    }
+    let walking = c.is_walking();
+    let bob = if walking && (c.stride * 7.0) as i32 % 2 == 1 {
+        -1
+    } else {
+        0
+    };
+    let holding =
+        c.has_cup || (!walking && matches!(activity, Activity::CoffeeBreak | Activity::Done));
+    holding.then(|| {
+        (
+            if c.facing_left { left - 2 } else { left + 11 },
+            top + 3 + bob,
+        )
+    })
+}
+
 fn draw_clawd(cv: &mut Canvas, c: &Clawd, time: f64) {
     let a = art();
     let p = &a.chars.palette;
@@ -387,11 +622,12 @@ fn draw_clawd(cv: &mut Canvas, c: &Clawd, time: f64) {
     let phase = |rate: f64| (time * rate) as i64 % 2 == 0;
 
     if c.is_seated() {
-        let t = match c.place {
-            Some(Place::Seat(i)) => seat_table(i),
-            _ => unreachable!("seated Clawds have a Seat"),
+        let Some(Place::Seat(i)) = c.place else {
+            return;
         };
+        let table = seat_table(i);
         let body = match activity {
+            Activity::CoffeeBreak if sipping(c, time) => "clawd_sit_sleepy",
             Activity::CoffeeBreak => {
                 if (time * 0.4 + c.order as f64).fract() < 0.08 {
                     "clawd_sit"
@@ -399,59 +635,36 @@ fn draw_clawd(cv: &mut Canvas, c: &Clawd, time: f64) {
                     "clawd_sit_sleepy"
                 }
             }
-            Activity::Working => {
-                if phase(5.0) {
-                    "clawd_type_a"
-                } else {
-                    "clawd_type_b"
-                }
-            }
-            Activity::NeedsYou(_) => {
-                if phase(2.5) {
-                    "clawd_wave"
-                } else {
-                    "clawd_sit"
-                }
-            }
-            Activity::Done => {
-                if (time * 0.5).fract() < 0.3 {
-                    "clawd_cheer"
-                } else {
-                    "clawd_sit"
-                }
-            }
+            Activity::Working if phase(5.0) => "clawd_type_a",
+            Activity::Working => "clawd_type_b",
+            Activity::NeedsYou(_) if phase(2.5) => "clawd_wave",
+            Activity::Done if cheering(time) => "clawd_cheer",
             Activity::Spilled => "clawd_sad",
             _ => "clawd_sit",
         };
         cv.sprite(a.chars.get(body), left, top, p, &hat);
         cv.sprite(a.chars.get(c_hat(c)), left, top - 3, p, &hat);
-        let cx = left + 5;
         match activity {
-            Activity::Working => cv.sprite(a.chars.get("laptop"), cx - 4, t.y - 5, p, &[]),
-            Activity::Spilled => cv.sprite(a.chars.get("cup_tipped"), cx - 2, t.y - 2, p, &[]),
-            _ => cv.sprite(a.chars.get("cup"), cx, t.y - 3, p, &[]),
+            Activity::Working => cv.sprite(a.chars.get("laptop"), left + 1, table.y - 5, p, &[]),
+            Activity::Spilled => {
+                cv.sprite(a.chars.get("cup_tipped"), left + 3, table.y - 2, p, &[])
+            }
+            _ => {}
         }
-        return;
+    } else {
+        let walking = c.is_walking();
+        let stepping = walking && (c.stride * 7.0) as i32 % 2 == 1;
+        let body = if stepping {
+            "clawd_walk"
+        } else {
+            "clawd_stand"
+        };
+        let bob = if stepping { -1 } else { 0 };
+        cv.sprite(a.chars.get(body), left, top + bob, p, &hat);
+        cv.sprite(a.chars.get(c_hat(c)), left, top - 3 + bob, p, &hat);
     }
-
-    let walking = c.is_walking();
-    let body = if walking && (c.stride * 7.0) as i32 % 2 == 1 {
-        "clawd_walk"
-    } else {
-        "clawd_stand"
-    };
-    let bob = if walking && (c.stride * 7.0) as i32 % 2 == 1 {
-        -1
-    } else {
-        0
-    };
-    cv.sprite(a.chars.get(body), left, top + bob, p, &hat);
-    cv.sprite(a.chars.get(c_hat(c)), left, top - 3 + bob, p, &hat);
-    let holding =
-        c.has_cup || (!walking && matches!(activity, Activity::CoffeeBreak | Activity::Done));
-    if holding {
-        let x = if c.facing_left { left - 2 } else { left + 11 };
-        cv.sprite(a.chars.get("cup"), x, top + 3 + bob, p, &[]);
+    if let Some((x, y)) = cup_pose(c, time) {
+        cv.sprite(a.chars.get("cup"), x, y, p, &[]);
     }
 }
 
@@ -483,20 +696,11 @@ fn overlays(cv: &mut Canvas, c: &Clawd, time: f64, selected: bool) {
                 );
             }
         }
-        Activity::CoffeeBreak if c.is_seated() => {
-            let t = ((time * 0.5) + c.order as f64 * 0.37).fract() as f32;
-            if t < 0.6 {
-                let cup_x = x0 + 6;
-                let y = y0 + 3 + 9 - 4 - (t * 7.0) as i32;
-                cv.blend(
-                    cup_x + ((t * 9.0).sin() * 1.0) as i32,
-                    y,
-                    Rgb::hex(0xe8e2da),
-                    0.35 * (1.0 - t / 0.6),
-                );
-            }
-        }
         _ => {}
+    }
+    let lifted = activity == Activity::CoffeeBreak && c.is_seated() && sipping(c, time);
+    if let Some((x, y)) = cup_pose(c, time).filter(|_| !lifted) {
+        steam(cv, x + 1, y - 1, time, c.order);
     }
     if selected {
         let y = y0 - 5 + bob;
@@ -510,7 +714,7 @@ fn overlays(cv: &mut Canvas, c: &Clawd, time: f64, selected: bool) {
 }
 
 /// Draws a sprite with the room's lighting applied, for things drawn after the lighting pass.
-fn sprite_lit(
+pub(crate) fn sprite_lit(
     cv: &mut Canvas,
     s: &Sprite,
     x: i32,
@@ -624,7 +828,12 @@ fn legend_entry(
 }
 
 fn footer(screen: &mut Screen, cafe: &Cafe, ui: &Ui, x: i32, y: i32, width: i32) {
-    let keys = "tab select · ⏎ jump · n new agent · r resync · q quit";
+    let sound = match ui.sound {
+        Some(true) => " · m mute · v volume",
+        Some(false) => " · m unmute · v volume",
+        None => "",
+    };
+    let keys = format!("tab select · ⏎ jump · n new agent{sound} · r resync · q quit");
     let keys = if ui.demo {
         format!("demo · {keys}")
     } else {
@@ -691,13 +900,7 @@ fn bubble(
 }
 
 /// A plain list for terminals too small to fit the room.
-fn compose_list(
-    cafe: &Cafe,
-    ui: &Ui,
-    screen: &mut Screen,
-    hits: &mut Vec<(i32, i32, i32, i32, Target)>,
-    wall_now: f64,
-) {
+fn compose_list(cafe: &Cafe, ui: &Ui, screen: &mut Screen, hits: &mut Vec<Hit>, wall_now: f64) {
     let (cols, rows) = (screen.cols as i32, screen.rows as i32);
     let title = format!(
         "Rex Café · make this pane {}×{} to see the room",
@@ -749,13 +952,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn layout_picks_the_biggest_scale_that_fits() {
+    fn layout_fills_the_terminal_and_snaps_to_whole_scales() {
         assert_eq!(layout(120, 40, 3), None);
+        assert_eq!(layout(140, 48, 1).unwrap().scale, 1.0);
+
         let l = layout(160, 52, 5).unwrap();
-        assert_eq!(l.scale, 1);
-        assert_eq!(l.legend_rows, 2);
-        assert_eq!(l.ox, 10);
-        assert_eq!(layout(300, 100, 1).unwrap().scale, 2);
+        assert_eq!((l.scale, l.ox, l.legend_rows), (1.0, 10, 2));
+
+        assert_eq!(layout(300, 100, 1).unwrap().scale, 2.0);
+
+        let l = layout(238, 87, 5).unwrap();
+        assert!((l.scale - 1.7).abs() < 1e-4);
+        assert_eq!((l.room_w, l.room_h), (238, 74));
+    }
+
+    #[test]
+    fn the_room_keeps_its_size_as_the_legend_grows() {
+        let few = layout(238, 87, 2).unwrap();
+        let many = layout(238, 87, 14).unwrap();
+        assert_eq!((few.scale, few.oy), (many.scale, many.oy));
+        assert!(many.legend_rows > few.legend_rows);
+    }
+
+    #[test]
+    fn the_volume_menu_draws_its_levels_and_maps_clicks_to_them() {
+        let mut ui = Ui {
+            sound: Some(true),
+            volume_menu: Some(Channel::Music),
+            ..Ui::default()
+        };
+        ui.levels.set(Channel::Rain, 0.4);
+        let frame = compose(&Cafe::new(), &ui, 140, 48, 0.0);
+        // At 1x the 140-column room starts at column 0, so the menu sits at 105.
+        let (x, slider) = (105, 118);
+        assert_eq!(
+            frame.hit(slider + 4, 3),
+            Some(&Target::Volume(Channel::Music, 5))
+        );
+        assert_eq!(
+            frame.hit(slider - 1, 2),
+            Some(&Target::Volume(Channel::Master, 0))
+        );
+        assert_eq!(frame.hit(x + 3, 4), Some(&Target::VolumeRow(Channel::Rain)));
+        assert_eq!(frame.hit(x + 1, 7), Some(&Target::VolumePanel));
+        let text = frame.screen.to_text();
+        let rain = text.lines().nth(4).unwrap();
+        assert!(
+            rain.contains("rain") && rain.contains("━━━━──────") && rain.contains("40%"),
+            "{rain}"
+        );
+        assert!(text.lines().nth(3).unwrap().contains("▸ music"));
     }
 
     #[test]

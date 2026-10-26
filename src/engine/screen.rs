@@ -61,14 +61,19 @@ impl Screen {
     }
 
     /// Draws `canvas` with its top-left at `(col, row)`. Each canvas pixel
-    /// becomes `scale` columns wide and `scale` half-rows tall.
-    pub fn blit(&mut self, canvas: &Canvas, col: i32, row: i32, scale: usize) {
-        let cols = canvas.w * scale;
-        let rows = canvas.h * scale / 2;
+    /// becomes `scale` columns wide and `scale` half-rows tall. A fractional
+    /// scale samples the nearest pixel, so some pixels come out a cell larger
+    /// than others.
+    pub fn blit(&mut self, canvas: &Canvas, col: i32, row: i32, scale: f32) {
+        // The epsilon keeps 140 × (238 / 140) from flooring to 237.
+        let cols = (canvas.w as f32 * scale + 1e-3).floor() as usize;
+        let rows = (canvas.h as f32 * scale / 2.0 + 1e-3).floor() as usize;
+        let pixel = |sub: usize, len: usize| (((sub as f32 + 0.5) / scale) as usize).min(len - 1);
         for cy in 0..rows {
+            let (top_y, bottom_y) = (pixel(cy * 2, canvas.h), pixel(cy * 2 + 1, canvas.h));
             for cx in 0..cols {
-                let top = canvas.get(cx / scale, cy * 2 / scale);
-                let bottom = canvas.get(cx / scale, (cy * 2 + 1) / scale);
+                let x = pixel(cx, canvas.w);
+                let (top, bottom) = (canvas.get(x, top_y), canvas.get(x, bottom_y));
                 if let Some(cell) = self.cell_mut(col + cx as i32, row + cy as i32) {
                     *cell = if top == bottom {
                         Cell::blank(top)
@@ -112,6 +117,27 @@ impl Screen {
             let line: String = (0..self.cols).map(|c| self.get(c, row).ch).collect();
             out.push_str(line.trim_end());
             out.push('\n');
+        }
+        out
+    }
+
+    /// Writes the screen as a binary PPM with each cell `cw` x `ch` pixels.
+    /// Text shows as a block of its colour, which is enough to check layout.
+    pub fn to_ppm(&self, cw: usize, ch: usize) -> Vec<u8> {
+        let (w, h) = (self.cols as usize * cw, self.rows as usize * ch);
+        let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
+        for y in 0..h {
+            for x in 0..w {
+                let cell = self.get((x / cw) as u16, (y / ch) as u16);
+                let (cx, cy) = (x % cw, y % ch);
+                let c = match cell.ch {
+                    UPPER_HALF if cy < ch / 2 => cell.fg,
+                    UPPER_HALF | ' ' => cell.bg,
+                    _ if cx > 0 && cx < cw - 1 && cy > ch / 4 && cy < ch - ch / 4 => cell.fg,
+                    _ => cell.bg,
+                };
+                out.extend([c.0, c.1, c.2]);
+            }
         }
         out
     }
@@ -180,7 +206,7 @@ mod tests {
         let mut c = Canvas::new(2, 2, Rgb(1, 1, 1));
         c.set(1, 1, Rgb(9, 9, 9));
         let mut s = Screen::new(2, 1, Rgb::BLACK);
-        s.blit(&c, 0, 0, 1);
+        s.blit(&c, 0, 0, 1.0);
         assert_eq!(s.get(0, 0), Cell::blank(Rgb(1, 1, 1)));
         assert_eq!(
             s.get(1, 0),
@@ -197,9 +223,23 @@ mod tests {
         let mut c = Canvas::new(1, 1, Rgb(5, 5, 5));
         c.set(0, 0, Rgb(5, 5, 5));
         let mut s = Screen::new(3, 2, Rgb::BLACK);
-        s.blit(&c, 0, 0, 2);
+        s.blit(&c, 0, 0, 2.0);
         assert_eq!(s.get(1, 0), Cell::blank(Rgb(5, 5, 5)));
         assert_eq!(s.get(2, 0), Cell::blank(Rgb::BLACK));
+    }
+
+    #[test]
+    fn blit_fills_fractional_scales_with_nearest_pixels() {
+        let mut c = Canvas::new(2, 2, Rgb(1, 1, 1));
+        c.set(1, 0, Rgb(9, 9, 9));
+        c.set(1, 1, Rgb(9, 9, 9));
+        let mut s = Screen::new(4, 2, Rgb::BLACK);
+        s.blit(&c, 0, 0, 1.5);
+        let row: Vec<Rgb> = (0..4).map(|x| s.get(x, 0).bg).collect();
+        assert_eq!(
+            row,
+            vec![Rgb(1, 1, 1), Rgb(9, 9, 9), Rgb(9, 9, 9), Rgb::BLACK]
+        );
     }
 
     #[test]

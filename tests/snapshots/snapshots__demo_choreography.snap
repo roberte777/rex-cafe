@@ -11,12 +11,12 @@ expression: out
   12s  1=CoffeeBreak  2=Working  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
   14s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
   16s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
-  18s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=Working
+  18s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
   20s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
   22s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
-  24s  1=CoffeeBreak  2=Working  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
-  26s  1=CoffeeBreak  2=Working  3=CoffeeBreak  4=CoffeeBreak  5=Working
-  28s  1=CoffeeBreak  2=Working  3=GettingCoffee  4=CoffeeBreak  5=Working
+  24s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
+  26s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=Working
+  28s  1=CoffeeBreak  2=GettingCoffee  3=GettingCoffee  4=CoffeeBreak  5=Working
   30s  1=CoffeeBreak  2=Done  3=GettingCoffee  4=CoffeeBreak  5=Working
   32s  1=CoffeeBreak  2=Done  3=GettingCoffee  4=CoffeeBreak  5=Working
   34s  1=CoffeeBreak  2=Done  3=GettingCoffee  4=CoffeeBreak  5=Working

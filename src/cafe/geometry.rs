@@ -18,8 +18,8 @@ pub const COUNTER_TOP: i32 = 43;
 pub const COUNTER_BOTTOM: i32 = 60;
 
 /// Barista positions, as the sprite's left edge.
-pub const BARISTA_MACHINE_X: f32 = 21.0;
-pub const BARISTA_HANDOFF_X: f32 = 27.0;
+pub const BARISTA_MACHINE_X: f32 = 15.0;
+pub const BARISTA_HANDOFF_X: f32 = 26.0;
 pub const BARISTA_Y: i32 = 28;
 
 pub const LAMPS_X: [i32; 3] = [30, 72, 110];

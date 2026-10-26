@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use crate::agents::{Agent, BlockedOn, Status};
 use crate::engine::Rgb;
 use ambient::Ambient;
-use barista::Barista;
+use barista::{Barista, Drink};
 use geometry::{DOOR, PICKUP, Place, SEATS, STANDING_SPOTS, route, seat_order};
 
 /// How fast Clawds walk, in pixels per second.
@@ -91,6 +91,17 @@ impl Activity {
             Status::Error => Activity::Spilled,
         }
     }
+}
+
+/// Something that just happened in the café, for anything that wants to react, like sound.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Moment {
+    DrinkStarted(Drink),
+    DrinkServed,
+    /// A Clawd sat down with a fresh drink and stirred it, at this stereo position.
+    Stirred(f32),
+    /// Lightning struck, with a strength from 0.3 (far off) to 1 (overhead).
+    Lightning(f32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -200,6 +211,7 @@ pub struct Cafe {
     pub time: f64,
     door_open_until: f64,
     next_order: u64,
+    moments: Vec<Moment>,
 }
 
 impl Default for Cafe {
@@ -218,6 +230,7 @@ impl Cafe {
             time: 0.0,
             door_open_until: 0.0,
             next_order: 0,
+            moments: Vec::new(),
         }
     }
 
@@ -420,8 +433,17 @@ impl Cafe {
 
     pub fn update(&mut self, dt: f32) {
         self.time += dt as f64;
-        self.ambient.update(dt, self.time);
+        if let Some(strength) = self.ambient.update(dt) {
+            self.moments.push(Moment::Lightning(strength));
+        }
+        let was_brewing = self.barista.brewing();
         let served = self.barista.update(dt);
+        if let Some(drink) = self.barista.drink().filter(|_| !was_brewing) {
+            self.moments.push(Moment::DrinkStarted(drink));
+        }
+        if served.is_some() {
+            self.moments.push(Moment::DrinkServed);
+        }
         for c in &mut self.clawds {
             if let Some(block) = &served
                 && *block == c.agent.block
@@ -445,6 +467,8 @@ impl Cafe {
                         c.errand = Errand::None;
                         c.has_cup = false;
                         c.wants_coffee = false;
+                        let pan = (c.pos.0 / geometry::ROOM_W as f32 * 2.0 - 1.0).clamp(-0.9, 0.9);
+                        self.moments.push(Moment::Stirred(pan));
                     }
                     Errand::Leave => c.gone = true,
                     Errand::None | Errand::Waiting => {}
@@ -465,6 +489,11 @@ impl Cafe {
         if self.clawds.len() != before {
             self.fill_places();
         }
+    }
+
+    /// What happened since the last call.
+    pub fn take_moments(&mut self) -> Vec<Moment> {
+        std::mem::take(&mut self.moments)
     }
 
     /// Counts for the Menu: working, needs you, idle, done.
@@ -635,6 +664,23 @@ mod tests {
         hats.sort();
         hats.dedup();
         assert_eq!(hats.len(), HATS.len());
+    }
+
+    #[test]
+    fn a_coffee_run_starts_and_serves_a_drink() {
+        let mut cafe = open_cafe();
+        cafe.reset(&[agent("a", Status::Idle)]);
+        cafe.sync(&[agent("a", Status::Working)]);
+        let mut moments = Vec::new();
+        for _ in 0..30 * 30 {
+            cafe.update(1.0 / 30.0);
+            moments.extend(cafe.take_moments());
+        }
+        moments.retain(|m| !matches!(m, Moment::Lightning(_)));
+        assert!(
+            matches!(moments[..], [Moment::DrinkStarted(_), Moment::DrinkServed, Moment::Stirred(p)] if (-1.0..=1.0).contains(&p)),
+            "{moments:?}"
+        );
     }
 
     #[test]

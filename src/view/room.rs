@@ -196,8 +196,20 @@ pub fn paint_counter(c: &mut Canvas) {
     );
 }
 
-pub fn paint_machine(c: &mut Canvas) {
+const GRINDER_AT: (i32, i32) = (21, 32);
+const COFFEE: Rgb = Rgb::hex(0x6b3c22);
+
+/// The espresso machine and grinder. While a drink brews, a cup sits in the
+/// machine's bay and fills from a thin stream.
+pub fn paint_machine(c: &mut Canvas, brew: Option<f32>, time: f64) {
     let props = &art().props;
+    c.sprite(
+        props.get("grinder"),
+        GRINDER_AT.0,
+        GRINDER_AT.1,
+        &props.palette,
+        &[],
+    );
     c.sprite(
         props.get("espresso"),
         MACHINE_AT.0,
@@ -205,7 +217,32 @@ pub fn paint_machine(c: &mut Canvas) {
         &props.palette,
         &[],
     );
+    // The cup goes in once the grounds are tamped, and the shot runs after
+    // that, in step with the sound.
+    let Some(progress) = brew.filter(|p| *p > SHOT_STARTS - 0.08) else {
+        return;
+    };
+    let (mx, my) = MACHINE_AT;
+    let chars = &art().chars;
+    let (cup_x, cup_y) = (mx + 4, my + 10);
+    c.sprite(chars.get("cup_empty"), cup_x, cup_y, &chars.palette, &[]);
+    if progress > SHOT_STARTS && progress < 0.96 {
+        let drip = (time * 12.0) as i32 % 2;
+        c.set(
+            cup_x + 1,
+            my + 9,
+            if drip == 0 { COFFEE.scale(1.3) } else { COFFEE },
+        );
+    }
+    if progress > 0.65 {
+        c.set(cup_x + 1, cup_y + 1, COFFEE);
+    }
 }
+
+/// How far into a brew the shot starts pouring: after the grind, knock, and tamp.
+pub const SHOT_STARTS: f32 = 0.4;
+/// Where the steam wand is, on the machine's right.
+pub const STEAM_WAND: (i32, i32) = (MACHINE_AT.0 + 14, MACHINE_AT.1 + 8);
 
 fn paint_table(c: &mut Canvas, t: Table) {
     c.hline(t.x, t.y, t.w, TABLE_TOP);
@@ -220,10 +257,11 @@ pub fn repaint_table(c: &mut Canvas, t: Table) {
     paint_table(c, t);
 }
 
-pub fn paint_door(c: &mut Canvas, open: bool, time: f64) {
+pub fn paint_door(c: &mut Canvas, open: bool, time: f64, flash: f32) {
     if open {
         c.fill(116, 12, 17, 34, DOORWAY);
-        paint_sky(c, 116, 12, 132, 30, time, 5);
+        paint_sky(c, 116, 12, 132, 30, flash);
+        paint_rain(c, 116, 12, 132, 44, time, 5, flash);
         c.fill(130, 12, 3, 34, DOOR_PANEL);
         return;
     }
@@ -286,38 +324,128 @@ pub fn apply_light(c: &mut Canvas) {
     });
 }
 
-/// Night sky with buildings, lit windows, and stars, in the given rectangle.
-fn paint_sky(c: &mut Canvas, x0: i32, y0: i32, x1: i32, y1: i32, time: f64, seed: i64) {
+/// The overcast night sky in the given rectangle.
+fn paint_sky(c: &mut Canvas, x0: i32, y0: i32, x1: i32, y1: i32, flash: f32) {
     for y in y0..=y1 {
         let t = (y - y0) as f32 / (y1 - y0).max(1) as f32;
-        let sky = Rgb::hex(0x121128).mix(Rgb::hex(0x231c36), t);
+        let sky = Rgb::hex(0x121128)
+            .mix(Rgb::hex(0x231c36), t)
+            .mix(LIGHTNING_SKY, flash * 0.85);
         for x in x0..=x1 {
             c.set(x, y, sky);
         }
     }
-    // Stars.
-    for i in 0..((x1 - x0) * (y1 - y0) / 26) {
-        let sx = x0 + (hash01(seed, i as i64) * (x1 - x0 + 1) as f32) as i32;
-        let sy = y0 + (hash01(i as i64, seed) * (y1 - y0) as f32 * 0.7) as i32;
-        let tw = (((time as f32) * (0.6 + hash01(i as i64, 77) * 1.4) + i as f32).sin() * 0.5
-            + 0.5)
-            .powi(2);
-        let base = c.get(sx.max(0) as usize, sy.max(0) as usize);
-        c.set(sx, sy, base.mix(Rgb::hex(0xd8d8f0), 0.2 + tw * 0.5));
+}
+
+/// Rain falling past the glass: short streaks drifting down and to the left.
+#[allow(clippy::too_many_arguments)]
+fn paint_rain(
+    c: &mut Canvas,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    time: f64,
+    seed: i64,
+    flash: f32,
+) {
+    let (w, h) = ((x1 - x0 + 1) as f32, (y1 - y0 + 1) as f32);
+    let drops = ((w * h) / 28.0) as i64;
+    for i in 0..drops {
+        let speed = 26.0 + hash01(seed, i * 3) * 12.0;
+        let span = h + 6.0;
+        let fall = ((time as f32 * speed / span) + hash01(i, seed * 7)).fract() * span - 3.0;
+        let start = hash01(seed * 3, i) * w;
+        let x = x0 + (start - fall * 0.35).rem_euclid(w) as i32;
+        let y = y0 + fall as i32;
+        for k in 0..3 {
+            let (px, py) = (x + (k as f32 * 0.35).round() as i32, y - k);
+            if px >= x0 && px <= x1 && py >= y0 && py <= y1 {
+                let drop = Rgb::hex(0x9aa6c8).mix(Rgb::hex(0xeef0ff), flash);
+                c.blend(px, py, drop, 0.42 - k as f32 * 0.12 + flash * 0.35);
+            }
+        }
     }
 }
 
 /// The window: three panes of night city with the moon.
-pub fn paint_window(c: &mut Canvas, time: f64) {
+/// The sky lit up by lightning, and the bolt itself.
+const LIGHTNING_SKY: Rgb = Rgb::hex(0xb4bdf0);
+const BOLT: Rgb = Rgb::hex(0xf6f7ff);
+const BOLT_GLOW: Rgb = Rgb::hex(0xa9b6ff);
+
+/// A jagged bolt down one pane, from the top of the glass to behind the buildings.
+fn paint_bolt(c: &mut Canvas, pane: usize, seed: u64, flash: f32) {
+    let (x0, x1) = WINDOW_PANES[pane % WINDOW_PANES.len()];
+    let mut rng = Rng::new(seed);
+    let mut x = x0 as f32 + 3.0 + rng.next_f32() * (x1 - x0 - 6) as f32;
+    let bottom = 19 + (rng.next_f32() * 7.0) as i32;
+    let mut fork = None;
+    for y in WINDOW_TOP..=bottom {
+        let px = x.round() as i32;
+        c.blend(px - 1, y, BOLT_GLOW, 0.35 * flash);
+        c.blend(px + 1, y, BOLT_GLOW, 0.35 * flash);
+        c.blend(px, y, BOLT, 0.3 + 0.7 * flash);
+        if fork.is_none() && y > WINDOW_TOP + 3 && rng.next_f32() < 0.15 {
+            fork = Some((x, y));
+        }
+        x = (x + (rng.next_f32() - 0.5) * 2.4).clamp((x0 + 1) as f32, (x1 - 1) as f32);
+    }
+    if let Some((mut fx, fy)) = fork {
+        let dir = if rng.next_f32() < 0.5 { -1.0 } else { 1.0 };
+        for k in 1..6 {
+            fx = (fx + dir * (0.6 + rng.next_f32() * 0.8)).clamp(x0 as f32, x1 as f32);
+            c.blend(fx.round() as i32, fy + k, BOLT, 0.7 * flash);
+        }
+    }
+}
+
+/// How much of a lightning flash reaches each pixel: some everywhere, most on the
+/// floor in front of the window.
+fn flash_map() -> &'static [f32] {
+    static MAP: OnceLock<Vec<f32>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        let mut v = Vec::with_capacity(ROOM_W * ROOM_H);
+        for y in 0..ROOM_H {
+            for x in 0..ROOM_W {
+                let (dx, dy) = ((x as f32 - 71.0) / 36.0, (y as f32 - 34.0) / 38.0);
+                v.push(0.25 + 0.75 * (-(dx * dx + dy * dy)).exp());
+            }
+        }
+        v
+    })
+}
+
+/// Lightning through the glass: a cold light that lifts even the shadows.
+pub fn apply_flash(c: &mut Canvas, flash: f32) {
+    if flash <= 0.0 {
+        return;
+    }
+    let map = flash_map();
+    let w = c.w;
+    c.map(|x, y, p| {
+        let k = flash * map[y * w + x];
+        let lit = p.tint(1.0 + k * 1.2, 1.0 + k * 1.35, 1.0 + k * 1.8);
+        let lift = |v: u8, by: f32| v.saturating_add((k * by) as u8);
+        Rgb(lift(lit.0, 40.0), lift(lit.1, 46.0), lift(lit.2, 70.0))
+    });
+}
+
+pub fn paint_window(c: &mut Canvas, time: f64, flash: f32, bolt: Option<(usize, u64)>) {
     for (pi, (x0, x1)) in WINDOW_PANES.into_iter().enumerate() {
-        paint_sky(c, x0, WINDOW_TOP, x1, WINDOW_BOTTOM, time, pi as i64 + 1);
+        paint_sky(c, x0, WINDOW_TOP, x1, WINDOW_BOTTOM, flash);
+        if let Some((pane, seed)) = bolt.filter(|(p, _)| *p == pi) {
+            paint_bolt(c, pane, seed, flash);
+        }
         // Buildings.
         let mut x = x0;
         let mut b = pi as i64 * 10;
         while x <= x1 {
             let bw = 3 + (hash01(b, 1) * 5.0) as i32;
             let top = 11 + (hash01(b, 2) * 14.0) as i32;
-            let shade = Rgb::hex(0x0c0b1a).mix(Rgb::hex(0x17142a), hash01(b, 3));
+            let shade = Rgb::hex(0x0c0b1a)
+                .mix(Rgb::hex(0x17142a), hash01(b, 3))
+                .mix(Rgb::hex(0x2a2946), flash * 0.6);
             for bx in x..(x + bw).min(x1 + 1) {
                 for by in top..=WINDOW_BOTTOM {
                     c.set(bx, by, shade);
@@ -364,17 +492,28 @@ pub fn paint_window(c: &mut Canvas, time: f64) {
             }
         }
     }
-    // Faint glass reflection.
-    for (x0, _) in WINDOW_PANES {
+    for (pi, (x0, x1)) in WINDOW_PANES.into_iter().enumerate() {
+        paint_rain(
+            c,
+            x0,
+            WINDOW_TOP,
+            x1,
+            WINDOW_BOTTOM,
+            time,
+            pi as i64 + 1,
+            flash,
+        );
+        // Faint glass reflection.
         for i in 0..6 {
             c.blend(x0 + 2 + i, WINDOW_TOP + 1 + i, Rgb::hex(0xffffff), 0.06);
         }
     }
 }
 
-pub fn paint_door_window(c: &mut Canvas, time: f64) {
+pub fn paint_door_window(c: &mut Canvas, time: f64, flash: f32) {
     let (x0, y0, x1, y1) = DOOR_WINDOW;
-    paint_sky(c, x0, y0, x1, y1, time, 9);
+    paint_sky(c, x0, y0, x1, y1, flash);
+    paint_rain(c, x0, y0, x1, y1, time, 9, flash);
     c.vline((x0 + x1) / 2, y0, y1 - y0 + 1, DOOR_FRAME);
 }
 
@@ -395,10 +534,11 @@ pub fn paint_lamp_glow(c: &mut Canvas) {
 }
 
 /// The espresso machine's indicator lights.
-pub fn paint_machine_lights(c: &mut Canvas, time: f64) {
+pub fn paint_machine_lights(c: &mut Canvas, time: f64, brew: Option<f32>) {
     let (mx, my) = MACHINE_AT;
     c.set(mx + 2, my + 4, Rgb::hex(0xff5a4a));
-    let blink = (time * 1.3).fract() < 0.8;
+    let rate = if brew.is_some() { 4.0 } else { 1.3 };
+    let blink = (time * rate).fract() < 0.6;
     c.set(
         mx + 5,
         my + 4,
@@ -408,5 +548,20 @@ pub fn paint_machine_lights(c: &mut Canvas, time: f64) {
             Rgb::hex(0x2a7040)
         },
     );
-    c.hline(mx + 8, my + 4, 3, Rgb::hex(0xf2c65a));
+    let lit = match brew {
+        Some(p) => (p * 3.0).ceil() as i32,
+        None => 3,
+    };
+    c.hline(mx + 8, my + 4, 3, Rgb::hex(0x5a4a22));
+    c.hline(mx + 8, my + 4, lit, Rgb::hex(0xf2c65a));
+}
+
+/// Lamp cords and shades, drawn again after the window so the one hanging in
+/// front of it isn't hidden by the night outside.
+pub fn paint_hanging_lamps(c: &mut Canvas) {
+    let props = &art().props;
+    for lx in LAMPS_X {
+        c.vline(lx, WINDOW_TOP - 1, LAMP_Y - WINDOW_TOP + 1, CORD);
+        super::sprite_lit(c, props.get("lamp"), lx - 3, LAMP_Y, &props.palette, 1.0);
+    }
 }

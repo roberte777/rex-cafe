@@ -27,7 +27,10 @@ fn demo_choreography() {
 #[test]
 fn demo_text_layer() {
     replay(&[21.0], |t, model| {
-        let ui = Ui { demo: true, ..Ui::default() };
+        let ui = Ui {
+            demo: true,
+            ..Ui::default()
+        };
         let frame = view::compose(&model.cafe, &ui, 150, 52, WALL + t);
         let text: String = frame
             .screen

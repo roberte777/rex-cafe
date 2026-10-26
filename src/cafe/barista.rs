@@ -4,7 +4,27 @@ use super::geometry::{BARISTA_HANDOFF_X, BARISTA_MACHINE_X};
 use crate::rng::Rng;
 
 const SPEED: f32 = 10.0;
-const BREW_SECS: f32 = 1.4;
+/// Long enough to grind, tamp, pull a shot, and steam the milk.
+const BREW_SECS: f32 = 4.2;
+
+/// What the Barista makes for each order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Drink {
+    Espresso,
+    Cortado,
+    FlatWhite,
+}
+
+impl Drink {
+    /// How long the milk steams, in seconds; none for an espresso.
+    pub fn steam_secs(self) -> f32 {
+        match self {
+            Drink::Espresso => 0.0,
+            Drink::Cortado => 1.4,
+            Drink::FlatWhite => 2.3,
+        }
+    }
+}
 const HAND_SECS: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,10 +44,12 @@ pub struct Barista {
     target: f32,
     orders: VecDeque<String>,
     stage: Stage,
+    drink: Drink,
     timer: f32,
     wander: f32,
     rng: Rng,
     present: bool,
+    facing_left: bool,
 }
 
 impl Barista {
@@ -37,10 +59,12 @@ impl Barista {
             target: BARISTA_MACHINE_X,
             orders: VecDeque::new(),
             stage: Stage::Idle,
+            drink: Drink::Espresso,
             timer: 0.0,
             wander: 4.0,
             rng: Rng::new(7),
             present: true,
+            facing_left: false,
         }
     }
 
@@ -50,6 +74,23 @@ impl Barista {
 
     pub fn brewing(&self) -> bool {
         self.stage == Stage::Brewing
+    }
+
+    /// The drink being made, while brewing.
+    pub fn drink(&self) -> Option<Drink> {
+        self.brewing().then_some(self.drink)
+    }
+
+    /// How far through the current drink the machine is, from 0 to 1.
+    pub fn brew_progress(&self) -> Option<f32> {
+        self.brewing()
+            .then(|| (1.0 - self.timer / BREW_SECS).clamp(0.0, 1.0))
+    }
+
+    /// Faces the machine while making a drink, otherwise the way it's going,
+    /// and the customers when standing still.
+    pub fn facing_left(&self) -> bool {
+        self.facing_left
     }
 
     /// Carrying a finished drink to the counter.
@@ -102,6 +143,11 @@ impl Barista {
         } else {
             self.x + step * d.signum()
         };
+        self.facing_left = match self.stage {
+            Stage::ToMachine | Stage::Brewing => true,
+            _ if d.abs() > step => d < 0.0,
+            _ => false,
+        };
 
         match self.stage {
             Stage::Idle => {
@@ -120,6 +166,11 @@ impl Barista {
             Stage::ToMachine if self.arrived() => {
                 self.stage = Stage::Brewing;
                 self.timer = BREW_SECS;
+                self.drink = match self.rng.next_f32() {
+                    x if x < 0.35 => Drink::Espresso,
+                    x if x < 0.65 => Drink::Cortado,
+                    _ => Drink::FlatWhite,
+                };
             }
             Stage::Brewing => {
                 self.timer -= dt;

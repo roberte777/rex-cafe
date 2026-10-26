@@ -9,6 +9,9 @@ palette
   2 #46c06a
   3 #e6b84a
   W #efe9dd
+  w #c7bdab
+  R #b4513b
+  r #87382a
   T #8fc2b6
   t #5f9488
   B #8a5634
@@ -26,22 +29,37 @@ palette
   N #96512f
   n #6e3820
 
+# Cups warm on top; the cup goes in the dark bay while it brews.
 sprite espresso
-  .WW..WW..WW.....
-  .WW..WW..WW.....
+  .WW.WW.RR.WW....
+  .ww.ww.rr.ww....
   SSSSSSSSSSSSSSSS
   SDDDDDDDDDDDDDDS
   SD1DD2DD333DDDDS
   SDDDDDDDDDDDDDDS
   SSSSSSSSSSSSSSSS
   ssssssssssssssss
-  ssdddssssssdddss
-  ssdDdssssssdDdss
-  sssDsssssssDssss
-  ssDDDDDDDDDDDDss
-  ssdddddddddddsss
+  sssdDdssssssssss
+  ssDDDDDDDssdddss
+  ssDDDDDDDssdDdss
+  ssDDDDDDDsssssss
+  ssdddddddsssssss
   ssssssssssssssss
   ssssssssssssssss
+
+# A tall grinder behind the counter, next to the machine.
+sprite grinder
+  BBBBB
+  BcccB
+  .BcB.
+  ..c..
+  .ccc.
+  .cdc.
+  .ccc.
+  .ccc.
+  .ccc.
+  .ccc.
+  ccccc
 
 sprite pastry_case
   TTTTTTTTTTTTTT

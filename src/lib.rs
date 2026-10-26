@@ -3,6 +3,7 @@
 
 pub mod agents;
 pub mod app;
+pub mod audio;
 pub mod cafe;
 pub mod demo;
 pub mod engine;
@@ -10,4 +11,5 @@ pub mod feed;
 pub mod replay;
 pub mod rex;
 pub mod rng;
+pub mod settings;
 pub mod view;
