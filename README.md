@@ -24,7 +24,7 @@ nix run . -- --demo      # made-up agents, no Rex needed
 ## Develop
 
 ```sh
-nix develop
+nix develop                                        # or `direnv allow` to load it on cd
 cargo test                                         # unit + snapshot tests
 cargo run -- --dump /tmp/frames --at 0,20,36       # demo frames as .ppm + .txt
 cargo insta review                                 # after an intended art or choreography change
