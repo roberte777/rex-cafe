@@ -1,0 +1,15 @@
+---
+source: tests/snapshots.rs
+expression: text
+---
+              TODAY'S MENU
+           Espresso ........ 1
+           Cortado ......... 1
+           Flat white ...... 3
+           Done ............ 0
+           wifi: rex-cafe
+       ██ Refactor auth middleware        ██ Fix flaky CI tests              ██ Optimize image pipeline         ██ Onboarding flow
+          ∗ coffee break · 2 min             → getting coffee                   ∗ coffee break · 2 min             ∗ coffee break · 1 min
+       ██ Search indexing
+          ! needs you · permission
+       demo · tab select · ⏎ jump · n new agent · r resync · q quit

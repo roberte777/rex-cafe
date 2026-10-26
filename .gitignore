@@ -1,0 +1,4 @@
+/target
+/result
+*.pending-snap
+.direnv/

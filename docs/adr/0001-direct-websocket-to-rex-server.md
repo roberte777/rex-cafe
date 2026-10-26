@@ -1,0 +1,3 @@
+# Talk to the Rex server over its WebSocket control API, not the rex CLI
+
+The Café connects straight to the Rex server's control WebSocket on its unix socket (`/api/control`, subprotocol `rex.control.v1`) for the startup snapshot, the server-wide event stream, and every command it issues. Shelling out to `rex events --all --json` and other `rex` subcommands would be simpler. We chose the WebSocket because its responses and events carry a `seq` that lets the snapshot and the live stream be merged without gaps or double-applied events, which the CLI stream doesn't expose. It also avoids spawning a process for every click.

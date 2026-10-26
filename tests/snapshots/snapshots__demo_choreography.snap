@@ -1,0 +1,37 @@
+---
+source: tests/snapshots.rs
+expression: out
+---
+   0s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak
+   2s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak  5=WalkingIn
+   4s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak  5=WalkingIn
+   6s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak  5=CoffeeBreak
+   8s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
+  10s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
+  12s  1=CoffeeBreak  2=Working  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
+  14s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
+  16s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=GettingCoffee
+  18s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=Working
+  20s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
+  22s  1=CoffeeBreak  2=GettingCoffee  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
+  24s  1=CoffeeBreak  2=Working  3=CoffeeBreak  4=CoffeeBreak  5=NeedsYou(Permission)
+  26s  1=CoffeeBreak  2=Working  3=CoffeeBreak  4=CoffeeBreak  5=Working
+  28s  1=CoffeeBreak  2=Working  3=GettingCoffee  4=CoffeeBreak  5=Working
+  30s  1=CoffeeBreak  2=Done  3=GettingCoffee  4=CoffeeBreak  5=Working
+  32s  1=CoffeeBreak  2=Done  3=GettingCoffee  4=CoffeeBreak  5=Working
+  34s  1=CoffeeBreak  2=Done  3=GettingCoffee  4=CoffeeBreak  5=Working
+  36s  1=CoffeeBreak  2=Done  3=Spilled  4=CoffeeBreak  5=Working
+  38s  1=CoffeeBreak  2=Done  3=Spilled  4=CoffeeBreak  5=Done
+  40s  1=CoffeeBreak  2=Done  3=Spilled  4=CoffeeBreak  5=Done
+  42s  1=CoffeeBreak  2=Done  3=Spilled  4=NeedsYou(Question)  5=Done
+  44s  1=CoffeeBreak  2=Done  3=Spilled  4=NeedsYou(Question)  5=Done
+  46s  1=CoffeeBreak  2=Done  3=Spilled  4=NeedsYou(Question)  5=Done
+  48s  1=CoffeeBreak  2=Done  3=Spilled  4=Working  5=Done
+  50s  1=CoffeeBreak  2=Done  3=CoffeeBreak  4=Working  5=Done
+  52s  1=CoffeeBreak  2=Done  3=CoffeeBreak  4=Working  5=Done
+  54s  1=CoffeeBreak  2=Done  3=CoffeeBreak  4=Working
+  56s  1=CoffeeBreak  2=Done  3=CoffeeBreak  4=Working
+  58s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=Working
+  60s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak
+  62s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak
+  64s  1=CoffeeBreak  2=CoffeeBreak  3=CoffeeBreak  4=CoffeeBreak

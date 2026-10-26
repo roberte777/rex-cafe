@@ -1,0 +1,97 @@
+# Furniture and fittings. `.` is transparent.
+
+palette
+  S #a9a49c
+  s #77736d
+  D #23211f
+  d #3b3936
+  1 #e0483c
+  2 #46c06a
+  3 #e6b84a
+  W #efe9dd
+  T #8fc2b6
+  t #5f9488
+  B #8a5634
+  b #c98a5a
+  p #e48fb0
+  y #f0cf7a
+  L #4d8a4a
+  l #2f6232
+  c #2a2a2a
+  O #d98a3e
+  o #a8652a
+  K #1b120c
+  G #5f9e46
+  g #3c7432
+  N #96512f
+  n #6e3820
+
+sprite espresso
+  .WW..WW..WW.....
+  .WW..WW..WW.....
+  SSSSSSSSSSSSSSSS
+  SDDDDDDDDDDDDDDS
+  SD1DD2DD333DDDDS
+  SDDDDDDDDDDDDDDS
+  SSSSSSSSSSSSSSSS
+  ssssssssssssssss
+  ssdddssssssdddss
+  ssdDdssssssdDdss
+  sssDsssssssDssss
+  ssDDDDDDDDDDDDss
+  ssdddddddddddsss
+  ssssssssssssssss
+  ssssssssssssssss
+
+sprite pastry_case
+  TTTTTTTTTTTTTT
+  T............t
+  T.bb.pp.yy.bbt
+  T.BB.pp.yy.BBt
+  TttttttttttttT
+  tttttttttttttt
+
+sprite lamp
+  ...c...
+  ..LLL..
+  .LLLLL.
+  LLLLLLL
+  lllllll
+
+sprite cat_a
+  ........O.O
+  o.......OOO
+  .oOOOOOOOKO
+  ..OOOOOOOO.
+  ..O.O..O.O.
+
+sprite cat_b
+  ........O.O
+  .o......OOO
+  ..oOOOOOOKO
+  ..OOOOOOOO.
+  ...O.O..O.O
+
+sprite cat_sit
+  ...O.O.....
+  ...OOO.....
+  ...KOK.....
+  ..OOOOO....
+  ..OOOOOoo..
+
+sprite plant
+  ..G..g..
+  .GgG.Gg.
+  GgGgGgG.
+  .gGGgGgG
+  GGgGgGg.
+  .gGgGGgG
+  GgGgGgG.
+  .GgGgg..
+  ..gGg...
+  NNNNNNNN
+  .NnnnnN.
+  .NnnnnN.
+  .NnnnnN.
+  .NnnnnN.
+  ..NNNN..

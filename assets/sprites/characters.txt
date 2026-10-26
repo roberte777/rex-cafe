@@ -1,0 +1,254 @@
+# Clawds, Hats, and the Barista. `.` is transparent.
+# H and h are filled in with each Hat's colour and shade at draw time.
+
+palette
+  O #d97757
+  o #b35a3e
+  l #ec9878
+  K #1d1210
+  k #7a3a28
+  W #f2ede3
+  w #c9bfae
+  C #5a3320
+  G #b6bfcc
+  g #858e9c
+  P #f6f2ea
+  F #a77bc4
+  f #7d55a0
+  R #f4cfd7
+  r #dca3b3
+  E #2b1631
+  M #b0506f
+  A #3f7d56
+  a #2c5c3e
+  Z #2a2a33
+
+# Standing Clawd, two walking frames. 12 x 10, feet on the last row.
+sprite clawd_stand
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOKOOOOKOO.
+  .OOKOOOOKOO.
+  OOOOOOOOOOOO
+  oOOOOOOOOOOo
+  .OOOOOOOOOO.
+  .oooooooooo.
+  ..o.o..o.o..
+  ..o.o..o.o..
+
+sprite clawd_walk
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOKOOOOKOO.
+  .OOKOOOOKOO.
+  OOOOOOOOOOOO
+  oOOOOOOOOOOo
+  .OOOOOOOOOO.
+  .oooooooooo.
+  ..o.o..o.o..
+  .o...o.o...o
+
+# Seated Clawds stop at the table top, which hides their legs. 12 x 8.
+sprite clawd_sit
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOKOOOOKOO.
+  .OOKOOOOKOO.
+  OOOOOOOOOOOO
+  oOOOOOOOOOOo
+  .OOOOOOOOOO.
+  .oooooooooo.
+
+sprite clawd_sit_sleepy
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOOOOOOOOO.
+  .OKKOOOOKKO.
+  OOOOOOOOOOOO
+  oOOOOOOOOOOo
+  .OOOOOOOOOO.
+  .oooooooooo.
+
+# Typing: arms reach forward to the keyboard, alternating.
+sprite clawd_type_a
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOKOOOOKOO.
+  .OOKOOOOKOO.
+  .OOOOOOOOOO.
+  oOOOOOOOOOOo
+  oOOOOOOOOOO.
+  .oooooooooo.
+
+sprite clawd_type_b
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOKOOOOKOO.
+  .OOKOOOOKOO.
+  .OOOOOOOOOO.
+  oOOOOOOOOOOo
+  .OOOOOOOOOOo
+  .oooooooooo.
+
+# Arms up: waving for attention, or cheering a finished job.
+sprite clawd_wave
+  ...........O
+  .llllllllllO
+  .lOOOOOOOOOO
+  .OOKOOOOKOO.
+  OOOKOOOOKOO.
+  oOOOOOOOOOO.
+  .OOOOOOOOOO.
+  .oooooooooo.
+
+sprite clawd_cheer
+  O..........O
+  OllllllllllO
+  OlOOOOOOOOOO
+  .OOKOOOOKOO.
+  .OOKOOOOKOO.
+  .OOOOOOOOOO.
+  .OOOOOOOOOO.
+  .oooooooooo.
+
+sprite clawd_sad
+  .llllllllll.
+  .lOOOOOOOOO.
+  .OOOOOOOOOO.
+  .OKOOOOOOKO.
+  OOOKOOOOKOOO
+  oOOOOkkOOOOo
+  .OOOOOOOOOO.
+  .oooooooooo.
+
+# Hats sit on top of the Clawd's head row.
+sprite hat_beanie
+  .....PP.....
+  ...HHHHHH...
+  ..HHHHHHHH..
+  .hhhhhhhhhh.
+
+sprite hat_cap
+  ............
+  ...HHHHHH...
+  ..HHHHHHHH..
+  .hhhhhhhhhhh
+
+sprite hat_party
+  .....P......
+  .....H......
+  ....HhH.....
+  ...HHhHH....
+
+sprite hat_propeller
+  ...HHHHHH...
+  .....hh.....
+  ....hhhh....
+  ...HHHHHH...
+
+sprite hat_whipped
+  .....H......
+  ....HHh.....
+  ...HHHHh....
+  ..hHHHHHHh..
+
+sprite hat_tophat
+  ...HHHHHH...
+  ...HHHHHH...
+  ...hhhhhh...
+  .HHHHHHHHHH.
+
+sprite hat_bow
+  ............
+  ..HH...HH...
+  ..HhHHHhH...
+  ..HH...HH...
+
+sprite hat_beret
+  ............
+  ......h.....
+  ..HHHHHHHH..
+  .HHHHHHHHHh.
+
+# Drinks and gear.
+sprite cup
+  WWW
+  WCW
+  wWw
+
+sprite cup_tipped
+  .....
+  wWWWC
+  CCCCC
+
+sprite laptop
+  .ggggggg.
+  .gGGGGGg.
+  .gGGPGGg.
+  .gGGGGGg.
+  ggggggggg
+
+sprite bubble_alert
+  .WWWWW.
+  WWWMWWW
+  WWWMWWW
+  WWWWWWW
+  WWWMWWW
+  .WWWWW.
+  ..WW...
+
+sprite bubble_done
+  .WWWWW.
+  WWWWWAW
+  WWWWAWW
+  WAWAWWW
+  WWAWWWW
+  .WWWWW.
+  ..WW...
+
+sprite cloud
+  ..ZZZ...
+  .ZZZZZZ.
+  ZZZZZZZZ
+
+sprite marker
+  WWWWW
+  .WWW.
+  ..W..
+
+# The Barista, an axolotl in a green apron, facing the room.
+sprite barista
+  ..F...F...F....
+  ..fRRRRRRRRf...
+  .FRRRRRRRRRRF..
+  FfRRRRRRRRRRRf.
+  .FRRRRRRRREERF.
+  FfRRRRRRRREERRF
+  .FRRRRRRRRRRRF.
+  .fRRRRRRRRRMMf.
+  ..FRRRRRRRRRF..
+  ...fRRRRRRRf...
+  .....RAAAR.....
+  ...rrAAAAArr...
+  ..rr.AAAAA.rr..
+  .....AaaaA.....
+  .....AAAAA.....
+  .....AAAAA.....
+
+sprite barista_serve
+  ..F...F...F....
+  ..fRRRRRRRRf...
+  .FRRRRRRRRRRF..
+  FfRRRRRRRRRRRf.
+  .FRRRRRRRREERF.
+  FfRRRRRRRREERRF
+  .FRRRRRRRRRRRF.
+  .fRRRRRRRRRMMf.
+  ..FRRRRRRRRRF..
+  ...fRRRRRRRf...
+  .....RAAAR.....
+  ...rrAAAAArrrrr
+  ..rr.AAAAA.....
+  .....AaaaA.....
+  .....AAAAA.....
+  .....AAAAA.....
